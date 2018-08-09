@@ -8,9 +8,11 @@ import (
 	"time"
 
 	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/awserr"
 	"github.com/aws/aws-sdk-go/aws/ec2metadata"
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/jtblin/kube2iam/metrics"
 	"github.com/karlseguin/ccache"
 )
 
@@ -72,8 +74,29 @@ func sessionName(roleARN, remoteIP string) string {
 	return fmt.Sprintf("%.[2]*[1]s", name, maxSessNameLength)
 }
 
+// Helper to format IAM return codes for metric labeling
+func getIAMCode(err error) string {
+	if err != nil {
+		awsErr, awsErrOk := err.(awserr.Error)
+		if awsErrOk {
+			return awsErr.Code()
+		}
+		return "UnknownError"
+	}
+	return "Success"
+}
+
 // AssumeRole returns an IAM role Credentials using AWS STS.
 func (iam *Client) AssumeRole(roleARN, remoteIP string) (*Credentials, error) {
+	// Set up a prometheus timer to track the request duration. It stores the timer value when
+	// observed. A function polls errCode at observation time to report the status of the request accurately.
+	var errCode string
+	lvsProducer := func() []string {
+		return []string{errCode, roleARN}
+	}
+	timer := metrics.NewFunctionTimer(metrics.IamRequestSec, lvsProducer, nil)
+	defer timer.ObserveDuration()
+
 	item, err := cache.Fetch(roleARN, ttl, func() (interface{}, error) {
 		sess, err := session.NewSession()
 		if err != nil {
@@ -99,9 +122,12 @@ func (iam *Client) AssumeRole(roleARN, remoteIP string) (*Credentials, error) {
 			Type:            "AWS-HMAC",
 		}, nil
 	})
+	errCode = getIAMCode(err)
 	if err != nil {
+		metrics.IamRequestCount.WithLabelValues(errCode, "roleARN").Inc()
 		return nil, err
 	}
+	metrics.IamRequestCount.WithLabelValues("Success", "roleARN").Inc()
 	return item.Value().(*Credentials), nil
 }
 
