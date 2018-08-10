@@ -71,6 +71,7 @@ type Server struct {
 	BackoffMaxInterval      time.Duration
 	InstanceID              string
 	HealthcheckFailReason   string
+	healthcheckTicker       *time.Ticker
 }
 
 type appHandlerFunc func(*log.Entry, http.ResponseWriter, *http.Request)
@@ -175,14 +176,20 @@ func (s *Server) getRoleMapping(IP string) (*mappings.RoleMappingResult, error) 
 	return roleMapping, nil
 }
 
-func (s *Server) pollHealthcheck(interval time.Duration) {
-	for {
-		s.healthcheck()
-		time.Sleep(interval)
+func (s *Server) beginPollHealthcheck(interval time.Duration) {
+	if s.healthcheckTicker == nil {
+		s.doHealthcheck()
+		s.healthcheckTicker = time.NewTicker(interval)
+		go func() {
+			for {
+				<- s.healthcheckTicker.C
+				s.doHealthcheck()
+			}
+		}()
 	}
 }
 
-func (s *Server) healthcheck() {
+func (s *Server) doHealthcheck() {
 	// Track the healthcheck status as a metric value
 	var err error
 	var errMsg string
@@ -339,7 +346,7 @@ func (s *Server) Run(host, token, nodeName string, insecure bool) error {
 	}
 
 	// Begin healthchecking
-	go s.pollHealthcheck(healthcheckInterval)
+	go s.beginPollHealthcheck(healthcheckInterval)
 
 	r := mux.NewRouter()
 	securityHandler := newAppHandler("securityCredentialsHandler", s.securityCredentialsHandler)
