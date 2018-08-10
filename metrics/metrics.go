@@ -3,9 +3,12 @@ package metrics
 import (
 	"net/http"
 
-	"github.com/jtblin/kube2iam/version"
+	"github.com/gorilla/mux"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	log "github.com/sirupsen/logrus"
+
+	"github.com/jtblin/kube2iam/version"
 )
 
 const (
@@ -108,6 +111,19 @@ func init() {
 		IamRequestSec.WithLabelValues(val, "")
 	}
 	Info.WithLabelValues(version.Version, version.BuildDate, version.GitCommit).Set(1)
+}
+
+// StartMetricsServer registers a prometheus /metrics handler and starts a HTTP server
+// listening on the provided port to service it.
+func StartMetricsServer(metricsPort string) {
+	r := mux.NewRouter()
+	r.Handle("/metrics", GetHandler())
+
+	go func() {
+		if err := http.ListenAndServe(":"+metricsPort, r); err != nil {
+			log.Fatalf("Error creating metrics http server: %+v", err)
+		}
+	}()
 }
 
 // GetHandler creates a prometheus HTTP handler that will serve metrics.

@@ -46,6 +46,7 @@ type Server struct {
 	APIServer               string
 	APIToken                string
 	AppPort                 string
+	MetricsPort             string
 	BaseRoleARN             string
 	DefaultIAMRole          string
 	IAMRoleKey              string
@@ -346,7 +347,7 @@ func (s *Server) Run(host, token, nodeName string, insecure bool) error {
 	}
 
 	// Begin healthchecking
-	go s.beginPollHealthcheck(healthcheckInterval)
+	s.beginPollHealthcheck(healthcheckInterval)
 
 	r := mux.NewRouter()
 	securityHandler := newAppHandler("securityCredentialsHandler", s.securityCredentialsHandler)
@@ -361,12 +362,19 @@ func (s *Server) Run(host, token, nodeName string, insecure bool) error {
 		"/{version}/meta-data/iam/security-credentials/{role:.*}",
 		newAppHandler("roleHandler", s.roleHandler))
 	r.Handle("/healthz", newAppHandler("healthHandler", s.healthHandler))
-	r.Handle("/metrics", metrics.GetHandler())
+
+	if s.MetricsPort == s.AppPort {
+		r.Handle("/metrics", metrics.GetHandler())
+	} else {
+		metrics.StartMetricsServer(s.MetricsPort)
+	}
+
+	// This has to be registered last so that it catches fall-throughs
 	r.Handle("/{path:.*}", newAppHandler("reverseProxyHandler", s.reverseProxyHandler))
 
 	log.Infof("Listening on port %s", s.AppPort)
 	if err := http.ListenAndServe(":"+s.AppPort, r); err != nil {
-		log.Fatalf("Error creating http server: %+v", err)
+		log.Fatalf("Error creating kube2iam http server: %+v", err)
 	}
 	return nil
 }
@@ -375,6 +383,7 @@ func (s *Server) Run(host, token, nodeName string, insecure bool) error {
 func NewServer() *Server {
 	return &Server{
 		AppPort:               defaultAppPort,
+		MetricsPort:           defaultAppPort,
 		BackoffMaxElapsedTime: defaultMaxElapsedTime,
 		IAMRoleKey:            defaultIAMRoleKey,
 		BackoffMaxInterval:    defaultMaxInterval,
