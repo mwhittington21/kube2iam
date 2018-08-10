@@ -77,22 +77,21 @@ func sessionName(roleARN, remoteIP string) string {
 // Helper to format IAM return codes for metric labeling
 func getIAMCode(err error) string {
 	if err != nil {
-		awsErr, awsErrOk := err.(awserr.Error)
-		if awsErrOk {
+		if awsErr, ok := err.(awserr.Error); ok {
 			return awsErr.Code()
 		}
-		return "UnknownError"
+		return metrics.IamUnknownFailCode
 	}
-	return "Success"
+	return metrics.IamSuccessCode
 }
 
 // AssumeRole returns an IAM role Credentials using AWS STS.
 func (iam *Client) AssumeRole(roleARN, remoteIP string) (*Credentials, error) {
 	// Set up a prometheus timer to track the request duration. It stores the timer value when
-	// observed. A function polls errCode at observation time to report the status of the request accurately.
-	var errCode string
+	// observed. A function gets err at observation time to report the status of the request after the function returns.
+	var err error
 	lvsProducer := func() []string {
-		return []string{errCode, roleARN}
+		return []string{getIAMCode(err), roleARN}
 	}
 	timer := metrics.NewFunctionTimer(metrics.IamRequestSec, lvsProducer, nil)
 	defer timer.ObserveDuration()
@@ -122,12 +121,9 @@ func (iam *Client) AssumeRole(roleARN, remoteIP string) (*Credentials, error) {
 			Type:            "AWS-HMAC",
 		}, nil
 	})
-	errCode = getIAMCode(err)
 	if err != nil {
-		metrics.IamRequestCount.WithLabelValues(errCode, "roleARN").Inc()
 		return nil, err
 	}
-	metrics.IamRequestCount.WithLabelValues("Success", "roleARN").Inc()
 	return item.Value().(*Credentials), nil
 }
 

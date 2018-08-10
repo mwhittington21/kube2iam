@@ -8,26 +8,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
-const namespace = "kube2iam"
+const (
+	namespace          = "kube2iam"
+
+	IamSuccessCode     = "Success"
+	IamUnknownFailCode = "UnknownError"
+)
 
 var (
-	// IamRequestCount counts number of outbound requests made to AWS IAM service.
-	IamRequestCount = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: "iam",
-			Name:      "requests_total",
-			Help:      "Number of outbound requests made to AWS IAM service.",
-		},
-
-		[]string{
-			// The HTTP status code AWS returned
-			"code",
-			// The arn of the IAM role being requested
-			"role_arn",
-		},
-	)
-
 	// IamRequestSec tracks timing of IAM requests.
 	IamRequestSec = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -43,24 +31,6 @@ var (
 			"code",
 			// The arn of the IAM role being requested
 			"role_arn",
-		},
-	)
-
-	// HTTPRequestCount counts number of HTTP requests served split by handler.
-	HTTPRequestCount = prometheus.NewCounterVec(
-		prometheus.CounterOpts{
-			Namespace: namespace,
-			Subsystem: "http",
-			Name:      "requests_total",
-			Help:      "Number of http requests served by kube2iam.",
-		},
-		[]string{
-			// The HTTP status code kube2iam returned
-			"code",
-			// The HTTP method being served
-			"method",
-			// The name of the handler being served
-			"handler",
 		},
 	)
 
@@ -114,24 +84,19 @@ var (
 
 type lvsProducer func() []string
 
-// Init ensures prometheus knows about all the metrics tracked by kube2iam and initializes the values with default
-// label sets.
-func Init() {
-	prometheus.MustRegister(IamRequestCount)
+func init() {
 	prometheus.MustRegister(IamRequestSec)
-	prometheus.MustRegister(HTTPRequestCount)
 	prometheus.MustRegister(HTTPRequestSec)
 	prometheus.MustRegister(HealthcheckStatus)
 	prometheus.MustRegister(Info)
 
-	for _, val := range []string{"Success", "UnknownError"} {
-		IamRequestCount.WithLabelValues(val, "")
+	for _, val := range []string{IamSuccessCode, IamUnknownFailCode} {
 		IamRequestSec.WithLabelValues(val, "")
 	}
 	Info.WithLabelValues(version.Version, version.BuildDate, version.GitCommit).Set(1)
 }
 
-// GetHandler creates
+// GetHandler creates a prometheus HTTP handler that will serve metrics.
 func GetHandler() http.Handler {
 	return promhttp.Handler()
 }

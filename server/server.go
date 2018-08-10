@@ -105,7 +105,7 @@ func (h *appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	rw := newResponseWriter(w)
 
 	// Set up a prometheus timer to track the request duration. It returns the timer value when
-	// observed and stores it in timeSecs to use for logs. A function polls the Request and responseWriter
+	// observed and stores it in timeSecs to report in logs. A function polls the Request and responseWriter
 	// for the correct labels at observation time.
 	var timeSecs float64
 	lvsProducer := func() []string {
@@ -113,7 +113,6 @@ func (h *appHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	timer := metrics.NewFunctionTimer(metrics.HTTPRequestSec, lvsProducer, &timeSecs)
 
-	defer metrics.HTTPRequestCount.WithLabelValues(strconv.Itoa(rw.statusCode), r.Method, h.name).Inc()
 	defer func() {
 		var err error
 		if rec := recover(); rec != nil {
@@ -316,25 +315,6 @@ func write(logger *log.Entry, w http.ResponseWriter, s string) {
 	}
 }
 
-func (s *Server) initMetrics() {
-	metrics.Init()
-
-	possibleReturnHTTPCodes := []int{
-		http.StatusOK,
-		http.StatusForbidden,
-		http.StatusNotFound,
-		http.StatusInternalServerError,
-	}
-	for _, code := range possibleReturnHTTPCodes {
-		for _, method := range []string{"GET", "POST", "HEAD"} {
-			for _, handlerName := range registeredHandlerNames {
-				metrics.HTTPRequestCount.WithLabelValues(strconv.Itoa(code), method, handlerName)
-				metrics.HTTPRequestSec.WithLabelValues(strconv.Itoa(code), method, handlerName)
-			}
-		}
-	}
-}
-
 // Run runs the specified Server.
 func (s *Server) Run(host, token, nodeName string, insecure bool) error {
 	k, err := k8s.NewClient(host, token, nodeName, insecure)
@@ -376,9 +356,6 @@ func (s *Server) Run(host, token, nodeName string, insecure bool) error {
 	r.Handle("/healthz", newAppHandler("healthHandler", s.healthHandler))
 	r.Handle("/metrics", metrics.GetHandler())
 	r.Handle("/{path:.*}", newAppHandler("reverseProxyHandler", s.reverseProxyHandler))
-
-	// Initialize metrics handling before we start serving
-	s.initMetrics()
 
 	log.Infof("Listening on port %s", s.AppPort)
 	if err := http.ListenAndServe(":"+s.AppPort, r); err != nil {
