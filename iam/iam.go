@@ -87,16 +87,19 @@ func getIAMCode(err error) string {
 
 // AssumeRole returns an IAM role Credentials using AWS STS.
 func (iam *Client) AssumeRole(roleARN, remoteIP string) (*Credentials, error) {
-	// Set up a prometheus timer to track the request duration. It stores the timer value when
-	// observed. A function gets err at observation time to report the status of the request after the function returns.
-	var err error
-	lvsProducer := func() []string {
-		return []string{getIAMCode(err), roleARN}
-	}
-	timer := metrics.NewFunctionTimer(metrics.IamRequestSec, lvsProducer, nil)
-	defer timer.ObserveDuration()
-
+	hitCache := true
 	item, err := cache.Fetch(roleARN, ttl, func() (interface{}, error) {
+		hitCache = false
+
+		// Set up a prometheus timer to track the AWS request duration. It stores the timer value when
+		// observed. A function gets err at observation time to report the status of the request after the function returns.
+		var err error
+		lvsProducer := func() []string {
+			return []string{getIAMCode(err), roleARN}
+		}
+		timer := metrics.NewFunctionTimer(metrics.IamRequestSec, lvsProducer, nil)
+		defer timer.ObserveDuration()
+
 		sess, err := session.NewSession()
 		if err != nil {
 			return nil, err
@@ -121,6 +124,9 @@ func (iam *Client) AssumeRole(roleARN, remoteIP string) (*Credentials, error) {
 			Type:            "AWS-HMAC",
 		}, nil
 	})
+	if hitCache {
+		metrics.IamCacheHitCount.WithLabelValues(roleARN).Inc()
+	}
 	if err != nil {
 		return nil, err
 	}

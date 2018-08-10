@@ -34,6 +34,21 @@ var (
 		},
 	)
 
+	// IamCacheHitCount tracks total number of IAM cache hits. Cache misses can be
+	// calculated by looking at the total number of IAM requests for the same role_arn.
+	IamCacheHitCount = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Namespace: namespace,
+			Subsystem: "iam",
+			Name:      "cache_hits_total",
+			Help:      "Total number of IAM cache hits.",
+		},
+		[]string{
+			// The arn of the IAM role being requested
+			"role_arn",
+		},
+	)
+
 	// HTTPRequestSec tracks timing of served HTTP requests.
 	HTTPRequestSec = prometheus.NewHistogramVec(
 		prometheus.HistogramOpts{
@@ -82,10 +97,9 @@ var (
 	)
 )
 
-type lvsProducer func() []string
-
 func init() {
 	prometheus.MustRegister(IamRequestSec)
+	prometheus.MustRegister(IamCacheHitCount)
 	prometheus.MustRegister(HTTPRequestSec)
 	prometheus.MustRegister(HealthcheckStatus)
 	prometheus.MustRegister(Info)
@@ -104,7 +118,7 @@ func GetHandler() http.Handler {
 // NewFunctionTimer creates a new timer for a generic function that can be observed to time the duration of the handler.
 // The metric is labeled with the values produced by the lvsProducer to allow for late binding of label values.
 // If provided, the timer value is stored in storeValue to allow callers access to the reported value.
-func NewFunctionTimer(histVec *prometheus.HistogramVec, lvsFn lvsProducer, storeValue *float64) *prometheus.Timer {
+func NewFunctionTimer(histVec *prometheus.HistogramVec, lvsFn func() []string, storeValue *float64) *prometheus.Timer {
 	timer := prometheus.NewTimer(prometheus.ObserverFunc(func(v float64) {
 		if storeValue != nil {
 			*storeValue = v
