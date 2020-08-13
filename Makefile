@@ -81,10 +81,10 @@ watch:
 	CompileDaemon -color=true -build "make test"
 
 cross:
-	CGO_ENABLED=0 GOOS=linux go build -o build/bin/linux/$(BINARY_NAME) $(GOBUILD_VERSION_ARGS) -a -installsuffix cgo  github.com/jtblin/$(BINARY_NAME)/cmd
+	CGO_ENABLED=0 GOOS=linux GOARCH=$(ARCH) go build -o build/bin/linux/$(BINARY_NAME)-$(ARCH) $(GOBUILD_VERSION_ARGS) -a -installsuffix cgo  github.com/jtblin/$(BINARY_NAME)/cmd
 
-docker: cross
-	docker build -t $(IMAGE_NAME):$(GIT_HASH) . $(DOCKER_BUILD_FLAGS)
+docker: #cross
+	docker build --build-arg arch=$(ARCH) -t $(IMAGE_NAME)-$(ARCH):$(GIT_HASH) . $(DOCKER_BUILD_FLAGS)
 
 docker-dev: docker
 	docker tag $(IMAGE_NAME):$(GIT_HASH) $(IMAGE_NAME):dev
