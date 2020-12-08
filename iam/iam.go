@@ -147,14 +147,14 @@ func (iam *Client) FetchRoleCredentials(roleARN, externalID string, remoteIP str
 		config = config.WithEndpointResolver(iam)
 	}
 	svc := sts.New(sess, config)
-	sessionName := sessionName(roleARN, remoteIP)
+	iamSessionName := sessionName(roleARN, remoteIP)
 
-	logger.Debug("FetchRoleCredentials: requesting role using sessionName")
+	logger.WithField("RoleSessionName", iamSessionName).Debug("FetchRoleCredentials: requesting role")
 
 	assumeRoleInput := sts.AssumeRoleInput{
 		DurationSeconds: aws.Int64(int64(sessionTTL.Seconds() * 2)),
 		RoleArn:         aws.String(roleARN),
-		RoleSessionName: aws.String(sessionName),
+		RoleSessionName: aws.String(iamSessionName),
 	}
 	// Only inject the externalID if one was provided with the request
 	if externalID != "" {
@@ -162,9 +162,10 @@ func (iam *Client) FetchRoleCredentials(roleARN, externalID string, remoteIP str
 	}
 	resp, err := svc.AssumeRole(&assumeRoleInput)
 	if err != nil {
+		logger.WithField("RoleSessionName", iamSessionName).Debug("FetchRoleCredentials: failed to receive credentials")
 		return nil, err
 	}
-	logger.Debug("FetchRoleCredentials: retrieved credentials successfully")
+	logger.WithField("RoleSessionName", iamSessionName).Debug("FetchRoleCredentials: retrieved credentials successfully")
 
 	return &Credentials{
 		AccessKeyID:     *resp.Credentials.AccessKeyId,
@@ -182,12 +183,13 @@ func (iam *Client) AssumeRole(roleARN, externalID string, remoteIP string, sessi
 	var err error
 	var creds *Credentials
 	hitCache := true
+
 	logger := log.WithFields(log.Fields{
-		"sessionName": sessionName,
 		"roleARN": roleARN,
 		"remoteIP": remoteIP,
 		"iamEndpoint": iam.Endpoint,
-		"method": "AssumeRole"})
+		"method": "AssumeRole",
+	})
 
 	if !iam.CacheIAMCreds {
 		logger.Debug("skipping cache")
