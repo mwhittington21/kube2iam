@@ -353,7 +353,6 @@ func (s *Server) roleHandler(logger *log.Entry, w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// TODO: move this further inside so it only runs when we actually hit the endpoint
 	roleLogger.Debugf("successfully got IAM creds from cache or STS")
 
 	if err := json.NewEncoder(w).Encode(credentials); err != nil {

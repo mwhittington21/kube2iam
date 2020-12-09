@@ -206,7 +206,10 @@ func (iam *Client) AssumeRole(roleARN, externalID string, remoteIP string, sessi
 			}
 			return creds, nil
 		})
-		creds = item.Value().(*Credentials)
+		if err == nil {
+			// An odd check for golang, but we will return the error later if it exists so we get cache hit metrics
+			creds = item.Value().(*Credentials)
+		}
 	}
 
 	if hitCache {
