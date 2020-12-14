@@ -71,6 +71,7 @@ type Server struct {
 	NamespaceRestrictionFormat string
 	ResolveDupIPs              bool
 	UseRegionalStsEndpoint     bool
+	UseIAMCredsCache           bool
 	AddIPTablesRule            bool
 	AutoDiscoverBaseArn        bool
 	AutoDiscoverDefaultRole    bool
@@ -352,7 +353,7 @@ func (s *Server) roleHandler(logger *log.Entry, w http.ResponseWriter, r *http.R
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	roleLogger.Debugf("retrieved credentials from sts endpoint: %s", s.iam.Endpoint)
+	roleLogger.Debugf("successfully got IAM creds from cache or STS")
 
 	if err := json.NewEncoder(w).Encode(credentials); err != nil {
 		roleLogger.Errorf("Error sending json %+v", err)
@@ -386,7 +387,7 @@ func (s *Server) Run(host, token, nodeName string, insecure bool) error {
 		return err
 	}
 	s.k8s = k
-	s.iam = iam.NewClient(s.BaseRoleARN, s.UseRegionalStsEndpoint)
+	s.iam = iam.NewClient(s.BaseRoleARN, s.UseRegionalStsEndpoint, s.UseIAMCredsCache)
 	log.Debugln("Caches have been synced.  Proceeding with server.")
 	s.roleMapper = mappings.NewRoleMapper(s.IAMRoleKey, s.IAMExternalID, s.DefaultIAMRole, s.NamespaceRestriction, s.NamespaceKey, s.iam, s.k8s, s.NamespaceRestrictionFormat)
 	log.Debugf("Starting pod and namespace sync jobs with %s resync period", s.CacheResyncPeriod.String())
